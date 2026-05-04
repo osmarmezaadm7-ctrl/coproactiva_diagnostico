@@ -1024,30 +1024,36 @@ async function renderModal(){
 async function generarFactores(){
   S.loadingFactores=true;render();
   const score=globalScore();const crits=critFailing();const c=S.ctx;const lid=lineaActual();
-  // Construir detalle completo por área: puntaje + ítems fallidos + observaciones
+  // Construir detalle completo por área con lenguaje explícito de ausencia/incumplimiento
   const obsCtx = AREAS.map(a=>{
     const s=scoreArea(a);
     if(!s) return null;
 
-    // Ítems que NO se cumplieron, separados por peso
+    // Ítems NO cumplidos — redactados como ausencias concretas
     const fallidos = a.items
       .filter((it,i) => itemApplies(it) && !S.checks[a.id][i])
       .map(it => {
         const peso = {c:'[CRÍTICO]', i:'[IMPORTANTE]', b:'[BÁSICO]'}[it.w];
-        return `${peso} ${it.t}`;
+        // Transformar el texto del ítem en una declaración de ausencia explícita
+        return `${peso} NO CUENTA CON: "${it.t}"`;
       });
 
-    // Ítems que SÍ se cumplieron
+    // Ítems cumplidos
     const cumplidos = a.items
       .filter((it,i) => itemApplies(it) && S.checks[a.id][i])
-      .map(it => it.t);
+      .map(it => `SÍ CUENTA CON: "${it.t}"`);
 
-    const note=S.notes[a.id]?.trim();
-
-    let ctx = `${a.label} (${s.pct}% de cumplimiento)`;
-    if(fallidos.length) ctx += `\n  Sin cumplir: ${fallidos.join('; ')}`;
-    if(cumplidos.length) ctx += `\n  Cumplidos: ${cumplidos.join('; ')}`;
-    if(note) ctx += `\n  Observación del comité: "${note}"`;
+    let ctx = `ÁREA ${a.label.toUpperCase()} — Cumplimiento: ${s.pct}%`;
+    if(fallidos.length){
+      ctx += `\n  INCUMPLIMIENTOS DETECTADOS (${fallidos.length}):`;
+      fallidos.forEach(f => { ctx += `\n    • ${f}`; });
+    } else {
+      ctx += `\n  Sin incumplimientos en esta área.`;
+    }
+    if(cumplidos.length){
+      ctx += `\n  ÍTEMS EN REGLA (${cumplidos.length}):`;
+      cumplidos.forEach(c2 => { ctx += `\n    • ${c2}`; });
+    }
     return ctx;
   }).filter(Boolean).join('\n\n');
 
@@ -1090,8 +1096,10 @@ DATOS DEL CONDOMINIO EVALUADO:
 - Sistema de gestión: ${sistemaCtx}
 - Puntaje global del diagnóstico: ${score}% (${score>=70?'Estable':score>=40?'En riesgo':'Crítico'})
 - Servicio recomendado: ${LINEAS[lid]?.label||lid}
-- Estado detallado por área (incluye ítems específicos cumplidos y no cumplidos):\n${obsCtx}
-- Ítems críticos sin resolver: ${crits.length>0?crits.map(x=>x.area+': '+x.text).join('; '):'Ninguno'}
+- ESTADO DETALLADO POR ÁREA (cada punto indica explícitamente qué tiene y qué le falta):
+${obsCtx}
+- Ítems de nivel CRÍTICO que la comunidad NO TIENE o NO CUMPLE:
+${crits.length>0 ? crits.map(x=>`  • [${x.area}] La comunidad NO CUENTA CON: "${x.text}"`).join('\n') : '  Ninguno'}
 - Áreas con cumplimiento bajo 40%: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'Ninguna'}
 
 INSTRUCCIONES:
