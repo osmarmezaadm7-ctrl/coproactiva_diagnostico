@@ -334,9 +334,9 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const AREAS=[
   {id:'legal',label:'Legal',emoji:'⚖️',items:[
-    {t:'Reglamento de copropiedad vigente y actualizado (post Ley 21.442)',w:'c'},
-    {t:'Reglamento de copropiedad vigente, actualizado post Ley 21.442 e inscrito en el CBR',w:'c'},
-    {t:'Comité de Administración constituido en escritura pública',w:'c'},
+    {t:'Reglamento de copropiedad inscrito en el CBR (Registro de Hipotecas y Gravámenes) y actualizado post Ley 21.442',w:'c'},
+    {t:'RUT de la comunidad vigente ante el SII',w:'c'},
+    {t:'Comité de Administración con acta de nombramiento reducida a escritura pública',w:'c'},
     {t:'Actas de asambleas y reuniones de comité disponibles (últimos 2 años)',w:'i'},
     {t:'Sin conflictos legales activos contra la comunidad',w:'i'},
   ]},
@@ -923,11 +923,18 @@ function renderRevision(){
 // ─── ACCIONES ──────────────────────────────────────────────────────────────────
 async function guardarFormulario(){
   if(!S.ctx.nombre.trim()){alert('Ingresa el nombre del condominio antes de guardar.');return;}
-  await saveDiag();
-  // Flash feedback
-  const btn=event.target;const orig=btn.textContent;
-  btn.textContent='✓ Guardado';btn.style.background='var(--vd)';btn.style.color='white';btn.style.borderColor='var(--vd)';
-  setTimeout(()=>{btn.textContent=orig;btn.style.background='';btn.style.color='';btn.style.borderColor='';},1500);
+  const btn=event.target;
+  btn.textContent='Guardando...';btn.disabled=true;
+  try {
+    await saveDiag();
+    _homeData = null; // invalidar cache
+    const orig='💾 Guardar';
+    btn.textContent='✓ Guardado';btn.style.background='var(--vd)';btn.style.color='white';btn.style.borderColor='var(--vd)';
+    setTimeout(()=>{btn.textContent=orig;btn.style.background='';btn.style.color='';btn.style.borderColor='';btn.disabled=false;},1800);
+  } catch(e) {
+    btn.textContent='Error — reintentar';btn.disabled=false;
+    console.error('Error guardando:', e);
+  }
 }
 
 function limpiarFormulario(){
@@ -1230,9 +1237,15 @@ async function guardarYSalir(){
     goTo('contexto');
     return;
   }
-  saveDiag();
-  closeExitModal();
-  goTo('home');
+  try {
+    await saveDiag();
+    _homeData = null; // forzar recarga del historial
+    closeExitModal();
+    goTo('home');
+  } catch(e) {
+    console.error('Error guardando:', e);
+    alert('Hubo un error al guardar. Intenta nuevamente.');
+  }
 }
 function salirSinGuardar(){
   closeExitModal();
