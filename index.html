@@ -165,7 +165,7 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 .res-desc{font-size:12px;opacity:0.82;line-height:1.5;}
 .ag{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;}
 @media(min-width:480px){.ag{grid-template-columns:repeat(3,1fr);}}
-.ac{background:white;border:1px solid var(--border);border-radius:var(--r);padding:10px 11px;}
+.ac{background:white;border:1px solid var(--border);border-radius:var(--r);padding:10px 11px;transition:box-shadow 0.13s;}.ac:hover{box-shadow:var(--shadow-md);}
 .ac-name{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--az-md);margin-bottom:2px;}
 .ac-pct{font-size:20px;font-weight:700;line-height:1;margin-bottom:2px;}
 .ac-bar{height:3px;background:var(--surf);border-radius:2px;margin-bottom:3px;overflow:hidden;}
@@ -392,17 +392,17 @@ const AREAS=[
 ];
 const WP={c:3,i:2,b:1};
 const LINEAS={
-  L1:{label:'Línea 1',sublabel:'Administración integral',
+  L1:{label:'Administración integral',sublabel:'Administración integral',
       desc:'La comunidad tiene base. CoproActiva asume la administración completa y optimiza los procesos existentes.',
       color:'#0369a1',bg:'#e0f2fe',
       items:['Recepción y auditoría documental completa','Gestión financiera con rendiciones mensuales al comité','Coordinación de proveedores y mantención preventiva','Plataforma digital para cobro y comunicación','Informes de gestión mensuales con indicadores clave'],
       valMin:'600.000',valMax:'900.000'},
-  L2:{label:'Línea 2',sublabel:'Nueva administración',
+  L2:{label:'Nueva administración',sublabel:'Nueva administración',
       desc:'La comunidad necesita restructuración. CoproActiva ordena cada área desde cero y regulariza la gestión.',
       color:'#1d5c38',bg:'#eaf4ee',
       items:['Levantamiento del estado administrativo y financiero actual','Regularización legal, laboral y documental prioritaria','Implementación de plataforma de gestión y control de morosidad','Coordinación de equipamiento crítico y mantención preventiva','Informes periódicos al comité con plan de avance'],
       valMin:'800.000',valMax:'1.100.000'},
-  L3:{label:'Línea 3',sublabel:'Asesoría externa',
+  L3:{label:'Asesoría externa',sublabel:'Asesoría externa',
       desc:'Diagnóstico y orientación sin cambio de administración. Apoyo técnico al comité vigente.',
       color:'#7a3e10',bg:'#fdeee0',
       items:['Auditoría documental con informe de hallazgos','Asesoría legal y normativa sobre Ley 21.442','Orientación para regularización laboral y previsional','Plan de acción priorizado por nivel de riesgo','Acompañamiento al comité en la toma de decisiones'],
@@ -843,11 +843,28 @@ function renderRevision(){
   <!-- Grilla de áreas -->
   <div class="ag">${AREAS.map(a=>{
     const s=scoreArea(a);const sem=semC(s?s.pct:null);
-    return`<div class="ac">
-      <div class="ac-name">${a.label}</div>
+    const fallidos=a.items.filter((it,i)=>itemApplies(it)&&!S.checks[a.id][i]);
+    const cumplidos=a.items.filter((it,i)=>itemApplies(it)&&S.checks[a.id][i]);
+    const note=S.notes[a.id]?.trim();
+    const aId='area_'+a.id;
+    return`<div class="ac" style="cursor:pointer" onclick="toggleAreaDetail('${a.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="ac-name">${a.label}</div>
+        <span id="arrow_${a.id}" style="font-size:10px;color:var(--muted);transition:transform 0.2s">▼</span>
+      </div>
       <div class="ac-pct" style="color:${sem.fg}">${s?s.pct+'%':'—'}</div>
       <div class="ac-bar"><div class="ac-fill" style="width:${s?s.pct:0}%;background:${sem.ac}"></div></div>
       <div class="ac-lbl" style="color:${sem.fg}">${sem.lbl}</div>
+      <div id="detail_${a.id}" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+        ${fallidos.length?`<div style="font-size:11px;font-weight:700;color:var(--sr-ac);margin-bottom:4px">Sin cumplir</div>
+          ${fallidos.map(it=>`<div style="font-size:11px;color:var(--text);padding:3px 0;border-bottom:1px solid var(--surf);display:flex;gap:6px;align-items:flex-start">
+            <span style="font-size:9px;padding:1px 5px;border-radius:8px;flex-shrink:0;margin-top:1px;font-weight:700;background:${{c:'var(--sr-bg)',i:'var(--sa-bg)',b:'var(--sg-bg)'}[it.w]};color:${{c:'var(--sr-ac)',i:'var(--sa-ac)',b:'var(--sg-ac)'}[it.w]}">${{c:'C',i:'I',b:'B'}[it.w]}</span>
+            ${it.t}
+          </div>`).join('')}`:''}
+        ${cumplidos.length?`<div style="font-size:11px;font-weight:700;color:var(--sg-fg);margin-top:6px;margin-bottom:4px">Cumplidos</div>
+          ${cumplidos.map(it=>`<div style="font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px solid var(--surf)">✓ ${it.t}</div>`).join('')}`:''}
+        ${note?`<div style="font-size:11px;color:var(--az-md);margin-top:6px;padding:5px 7px;background:var(--surf);border-radius:5px;border-left:2px solid var(--na)">📝 ${note}</div>`:''}
+      </div>
     </div>`;}).join('')}</div>
 
   <!-- Ítems críticos -->
@@ -885,7 +902,7 @@ function renderRevision(){
   <div class="card">
     <div class="card-ttl"><div class="cdot" style="background:var(--vd)"></div>Línea de servicio propuesta</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">
-      El sistema sugiere <strong style="color:var(--az)">${LINEAS[sug].label} — ${LINEAS[sug].sublabel}</strong> según el puntaje.
+      El sistema sugiere <strong style="color:var(--az)">${LINEAS[sug].label}</strong> según el puntaje.
       Puedes confirmarla o cambiarla según tu criterio.
     </div>
     <div class="linea-grid">
@@ -893,7 +910,7 @@ function renderRevision(){
         const isSel=lid===k;const isSug=sug===k;
         const selCls=isSel?`sel-${k.toLowerCase()}`:'';
         return`<div class="linea-card ${selCls}" onclick="S.lineaOverride='${k}';render()">
-          <div class="lc-tag" style="color:${lm2.color}">${lm2.label} ${isSug?`<span class="suggested-badge">Sugerida</span>`:''}</div>
+          <div class="lc-tag" style="color:${lm2.color}">${isSug?`<span class="suggested-badge">Sugerida</span>`:''}</div>
           <div class="lc-name">${lm2.sublabel}</div>
           <div class="lc-desc">${lm2.desc.substring(0,70)}...</div>
           ${isSel?`<div style="font-size:10px;font-weight:700;color:${lm2.color};margin-top:5px">✓ Seleccionada</div>`:''}
@@ -904,7 +921,7 @@ function renderRevision(){
   <!-- Valor -->
   <div class="card">
     <div class="card-ttl"><div class="cdot" style="background:var(--vd)"></div>Valor mensual estimado</div>
-    <p style="font-size:13px;color:var(--az-md);margin-bottom:10px">${lm.label} — ${lm.sublabel}</p>
+    <p style="font-size:13px;color:var(--az-md);margin-bottom:10px">${lm.label}</p>
     <div class="val-row">
       <span>$</span>
       <input type="text" class="val-in" value="${vMin}" oninput="S.valorMin=this.value">
@@ -1021,6 +1038,12 @@ async function generarFactores(){
 CONTEXTO DE LA EMPRESA:
 CoproActiva es una empresa de administración de condominios que está elaborando una propuesta comercial para una comunidad que aún no es su cliente. Los "factores destacados" son observaciones técnicas que justifican por qué esta comunidad necesita apoyo profesional. Van dirigidos al comité de administración, no a CoproActiva.
 
+ADVERTENCIA IMPORTANTE SOBRE LOS DATOS:
+La información fue proporcionada de forma PRELIMINAR por el propio comité de administración durante una reunión inicial. No existe verificación documental ni auditoría formal. Por lo tanto:
+- Redacta los factores con lenguaje que refleje esta incertidumbre (ej: "según lo declarado por el comité", "de confirmarse esta situación", "de acuerdo a lo informado")
+- NO afirmes categóricamente que algo "no existe" o "está incumplido" — di que "no fue posible acreditar" o "no se cuenta con respaldo documentado"
+- El tono debe ser de alerta profesional, no de acusación
+
 DATOS DEL CONDOMINIO EVALUADO:
 - Nombre: ${c.nombre||'Sin nombre'}
 - Tipo: ${c.tipo==='A'?'Tipo A (Edificio en altura)':c.tipo==='B'?'Tipo B (Condominio de casas)':'Mixto (edificios y casas)'}
@@ -1029,7 +1052,7 @@ DATOS DEL CONDOMINIO EVALUADO:
 - Personal contratado: ${trabajadoresCtx}
 - Sistema de gestión: ${sistemaCtx}
 - Puntaje global del diagnóstico: ${score}% (${score>=70?'Estable':score>=40?'En riesgo':'Crítico'})
-- Línea de servicio recomendada: ${lid} — ${LINEAS[lid]?.sublabel||''}
+- Servicio recomendado: ${LINEAS[lid]?.label||lid}
 - Estado detallado por área (incluye ítems específicos cumplidos y no cumplidos):\n${obsCtx}
 - Ítems críticos sin resolver: ${crits.length>0?crits.map(x=>x.area+': '+x.text).join('; '):'Ninguno'}
 - Áreas con cumplimiento bajo 40%: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'Ninguna'}
@@ -1160,7 +1183,7 @@ function generarPDF(){
         </div>`).join('')}`:''}
       ${sec('Propuesta de servicio')}
       <div style="background:#eaf4ee;border:1mm solid #c2e0cc;border-radius:3mm;overflow:hidden;margin-bottom:3mm">
-        <div style="background:#1d5c38;padding:3mm 5mm"><div style="font-size:9.5pt;font-weight:700;color:white">${lm.label} — ${lm.sublabel}</div></div>
+        <div style="background:#1d5c38;padding:3mm 5mm"><div style="font-size:9.5pt;font-weight:700;color:white">${lm.label}</div></div>
         <div style="padding:4mm 5mm">
           <div style="font-size:8pt;color:#516576;line-height:1.5;margin-bottom:3mm">${lm.desc}</div>
           ${lm.items.map(item=>`<div style="display:flex;align-items:flex-start;gap:3mm;margin-bottom:2.5mm">
@@ -1320,6 +1343,15 @@ async function guardarYSalir(){
 function salirSinGuardar(){
   closeExitModal();
   goTo('home');
+}
+
+function toggleAreaDetail(aId){
+  const detail = document.getElementById('detail_'+aId);
+  const arrow = document.getElementById('arrow_'+aId);
+  if(!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  if(arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
 }
 
 function eliminarFactor(i){
