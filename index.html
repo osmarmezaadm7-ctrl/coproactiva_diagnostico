@@ -216,6 +216,16 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 .modal-item-meta{font-size:11.5px;color:var(--muted);}
 .modal-item-score{font-size:13px;font-weight:700;padding:3px 9px;border-radius:10px;}
 .modal-empty{text-align:center;padding:24px;color:var(--muted);font-size:13px;}
+/* Pantalla de acceso */
+#loginScreen{display:flex;position:fixed;inset:0;background:var(--az);z-index:999;align-items:center;justify-content:center;flex-direction:column;padding:24px;}
+.login-box{background:white;border-radius:var(--r-xl);padding:32px 28px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.2);}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:24px;justify-content:center;}
+.login-mark{width:40px;height:40px;background:var(--na);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:white;}
+.login-brand{font-size:18px;font-weight:700;color:var(--az);}
+.login-brand b{color:var(--na);}
+.login-title{font-size:15px;font-weight:700;color:var(--az);margin-bottom:6px;text-align:center;}
+.login-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:20px;}
+.login-error{font-size:12px;color:var(--sr-ac);text-align:center;margin-top:8px;min-height:18px;}
 /* Modal detalle de área */
 .area-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;align-items:center;justify-content:center;padding:16px;}
 .area-modal-bg.show{display:flex;}
@@ -263,6 +273,28 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 </style>
 </head>
 <body>
+<!-- PANTALLA DE ACCESO -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-mark">C</div>
+      <div class="login-brand"><b>co</b>proactiva</div>
+    </div>
+    <div class="login-title">Herramienta de Diagnóstico</div>
+    <div class="login-sub">Ingresa la clave de acceso para continuar</div>
+    <div class="f">
+      <label class="fl">Clave de acceso</label>
+      <input type="password" id="loginInput" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter') checkLogin()"
+        style="font-size:16px;padding:12px 14px;text-align:center;letter-spacing:4px">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="pri" onclick="checkLogin()" style="width:100%;margin-top:14px;padding:12px;font-size:14px">
+      Ingresar
+    </button>
+  </div>
+</div>
+
 <div class="app">
   <!-- TOPBAR mobile -->
   <div class="topbar" id="topbar">
@@ -1106,17 +1138,19 @@ CONTEXTO DE LA EMPRESA:
 CoproActiva es una empresa de administración de condominios que está elaborando una propuesta comercial para una comunidad que aún no es su cliente. Los "factores destacados" son observaciones técnicas que justifican por qué esta comunidad necesita apoyo profesional. Van dirigidos al comité de administración, no a CoproActiva.
 
 FUENTE DE INFORMACIÓN Y ENFOQUE:
-Tu única fuente de análisis es el checklist de ítems no cumplidos. NO uses las observaciones del comité como base para los factores — esas son notas internas de contexto.
+Tu única fuente de análisis es el checklist de ítems no cumplidos. NO uses las observaciones del comité como base para los factores.
 Fundamenta cada factor en:
 1. El ítem específico del checklist que no se cumplió
-2. La obligación legal correspondiente según la Ley 21.442, su reglamento o normativa complementaria de copropiedad en Chile
-3. El riesgo concreto que representa ese incumplimiento para la comunidad (responsabilidad legal, multas, pérdida patrimonial, conflictos, etc.)
+2. La obligación que establece la Ley 21.442 de Copropiedad Inmobiliaria en términos generales — NO cites números de artículos específicos bajo ninguna circunstancia
+3. El riesgo concreto que representa ese incumplimiento para la comunidad
 
 TONO Y CERTEZA:
-Los datos son preliminares — el comité declaró no tener estos documentos o no saber si los tienen. Redacta con lenguaje que indique riesgo potencial:
-- Usa frases como: "La ausencia de...", "La falta de...", "No contar con..."
-- NO uses: "según el comité", "en la reunión se mencionó", "el comité informó"
-- El factor debe sonar como un análisis técnico-legal, no como un relato de la reunión
+Los datos son preliminares. Redacta con lenguaje de riesgo potencial:
+- Usa: "La ausencia de...", "La falta de...", "No contar con..."
+- Puedes referenciar la ley así: "según lo establece la Ley 21.442", "conforme a la Ley de Copropiedad Inmobiliaria", "de acuerdo a la normativa de copropiedad vigente"
+- NUNCA escribas "artículo X", "Art. X" ni ningún número de artículo
+- NO uses: "según el comité", "en la reunión se mencionó"
+- El factor debe sonar como análisis técnico, no como relato de reunión
 
 DATOS DEL CONDOMINIO EVALUADO:
 - Nombre: ${c.nombre||'Sin nombre'}
@@ -1136,7 +1170,7 @@ ${crits.length>0 ? crits.map(x=>`  • [${x.area}] La comunidad NO CUENTA CON: "
 INSTRUCCIONES:
 Genera exactamente 3 factores destacados. Cada factor debe:
 1. Basarse en UN ítem específico marcado como no cumplido en el checklist — especialmente los [CRÍTICO]
-2. Citar o referenciar la norma legal aplicable (Ley 21.442, su reglamento u otra normativa de copropiedad chilena)
+2. Mencionar la obligación legal en términos generales (Ley 21.442) — NUNCA citar números de artículos
 3. Explicar el riesgo o consecuencia legal, financiera o de seguridad que implica ese incumplimiento
 4. Estar redactado para el comité: claro, directo, sin jerga legal excesiva
 5. NO mencionar a CoproActiva
@@ -1538,7 +1572,38 @@ function limpiarFactores(){
   render();
 }
 
-// Precalentar Apps Script en background para reducir demora en primera carga real
+// ─── ACCESO ──────────────────────────────────────────────────────────────────
+const ACCESS_KEY = 'copro2025'; // Cambiar por su clave preferida
+
+function checkLogin(){
+  const input = document.getElementById('loginInput');
+  const val = input.value.trim();
+  if(val === ACCESS_KEY){
+    // Guardar sesión por 8 horas
+    sessionStorage.setItem('ca_auth', Date.now().toString());
+    document.getElementById('loginScreen').style.display = 'none';
+    initApp();
+  } else {
+    document.getElementById('loginError').textContent = 'Clave incorrecta. Intenta nuevamente.';
+    input.value = '';
+    input.focus();
+    // Shake animation
+    input.style.borderColor = 'var(--sr-ac)';
+    setTimeout(()=>{ input.style.borderColor = ''; }, 1500);
+  }
+}
+
+function checkAuth(){
+  const auth = sessionStorage.getItem('ca_auth');
+  if(auth){
+    const elapsed = Date.now() - parseInt(auth);
+    if(elapsed < 8 * 60 * 60 * 1000) return true; // 8 horas
+  }
+  return false;
+}
+
+function initApp(){
+  // Precalentar Apps Script en background para reducir demora en primera carga real
 setTimeout(() => {
   fetch(`${WORKER_BASE}/diagnosticos`)
     .then(r => r.json())
@@ -1564,7 +1629,19 @@ setTimeout(() => {
     });
 }, 100);
 
-render();
+  render();
+}
+
+// Verificar si ya está autenticado al cargar
+if(checkAuth()){
+  document.getElementById('loginScreen').style.display = 'none';
+  initApp();
+} else {
+  // Mostrar pantalla de login
+  setTimeout(()=>{
+    document.getElementById('loginInput').focus();
+  }, 300);
+}
 </script>
 
 <!-- PDF template -->
