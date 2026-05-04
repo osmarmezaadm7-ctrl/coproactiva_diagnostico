@@ -973,13 +973,58 @@ async function renderModal(){
 async function generarFactores(){
   S.loadingFactores=true;render();
   const score=globalScore();const crits=critFailing();const c=S.ctx;const lid=lineaActual();
-  const prompt=`Eres experto en administración de condominios en Chile. Genera 3 factores destacados para la propuesta comercial de CoproActiva.
-Datos: Tipo ${c.tipo}, ${c.unidades||'?'} unidades, ${c.antiguedad||'?'} años, ${c.trabajadores||0} trabajadores, sistema: ${c.sistema||'ninguno'}.
-Puntaje: ${score}%. Línea: ${lid}. Críticos faltantes: ${crits.map(x=>x.area+': '+x.text).join('; ')||'ninguno'}.
-Áreas en rojo: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'ninguna'}.
-RESPONDE SOLO con JSON sin bloques de código:
+  // Construir observaciones por área para dar más contexto
+  const obsCtx = AREAS.map(a=>{
+    const s=scoreArea(a);
+    const note=S.notes[a.id]?.trim();
+    if(!s) return null;
+    return `${a.label} (${s.pct}%${note?': '+note:''})`;
+  }).filter(Boolean).join(' | ');
+
+  const sistemaCtx = c.sistema
+    ? `La comunidad usa ${c.sistema} como sistema de gestión de gastos comunes. Esto significa que ya tienen una plataforma, pero hay que evaluar si está bien configurada y al día.`
+    : 'La comunidad no usa ningún sistema digital de gestión. Todo se maneja de forma manual o en planillas.';
+
+  const trabajadoresCtx = parseInt(c.trabajadores||'0') === 0
+    ? 'No tiene personal contratado directamente.'
+    : `Tiene ${c.trabajadores} trabajador(es) contratado(s) por la comunidad (conserjes, personal de aseo u otros).`;
+
+  const antiguedadCtx = c.antiguedad
+    ? `El edificio o condominio tiene ${c.antiguedad} años de antigüedad.`
+    : '';
+
+  const prompt=`Eres un experto en administración de condominios en Chile con conocimiento de la Ley 21.442.
+
+CONTEXTO DE LA EMPRESA:
+CoproActiva es una empresa de administración de condominios que está elaborando una propuesta comercial para una comunidad que aún no es su cliente. Los "factores destacados" son observaciones técnicas que justifican por qué esta comunidad necesita apoyo profesional. Van dirigidos al comité de administración, no a CoproActiva.
+
+DATOS DEL CONDOMINIO EVALUADO:
+- Nombre: ${c.nombre||'Sin nombre'}
+- Tipo: ${c.tipo==='A'?'Tipo A (Edificio en altura)':c.tipo==='B'?'Tipo B (Condominio de casas)':'Mixto (edificios y casas)'}
+- Unidades: ${c.unidades||'No informado'}
+- Antigüedad del edificio: ${antiguedadCtx||'No informada'}
+- Personal contratado: ${trabajadoresCtx}
+- Sistema de gestión: ${sistemaCtx}
+- Puntaje global del diagnóstico: ${score}% (${score>=70?'Estable':score>=40?'En riesgo':'Crítico'})
+- Línea de servicio recomendada: ${lid} — ${LINEAS[lid]?.sublabel||''}
+- Estado por área: ${obsCtx}
+- Ítems críticos sin resolver: ${crits.length>0?crits.map(x=>x.area+': '+x.text).join('; '):'Ninguno'}
+- Áreas con cumplimiento bajo 40%: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'Ninguna'}
+
+INSTRUCCIONES:
+Genera exactamente 3 factores destacados. Cada factor debe:
+1. Referirse a una situación REAL del condominio basada en los datos anteriores
+2. Explicar el RIESGO o IMPACTO concreto para la comunidad si no se aborda
+3. Estar redactado para el comité (lenguaje claro, sin tecnicismos innecesarios)
+4. NO mencionar a CoproActiva — los factores describen problemas del condominio, no soluciones
+5. NO confundir la antigüedad del edificio con la trayectoria de ninguna empresa
+6. Si el sistema de gestión es ${c.sistema||'ninguno'}, el factor debe referirse a ESE sistema específico y sus implicancias reales
+
+RESPONDE SOLO con JSON válido, sin texto adicional, sin bloques de código markdown:
 {"factores":[{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."}]}
-Título máximo 8 palabras. Cuerpo 2 oraciones profesionales para el comité.`;
+
+Título: máximo 7 palabras, descriptivo del problema específico.
+Cuerpo: exactamente 2 oraciones. Primera: describe el problema. Segunda: explica el riesgo o consecuencia.`;
   try{
     const res=await fetch(`${WORKER_BASE}/factores`,{
       method:'POST',
