@@ -864,17 +864,21 @@ function renderRevision(){
     <div class="card-ttl"><div class="cdot"></div>Factores destacados — generados por IA</div>
     ${S.loadingFactores?`<div class="load-row"><div class="spin"></div>Analizando el diagnóstico...</div>`:''}
     ${!S.loadingFactores&&S.factores.length?S.factores.map((f,i)=>`
-      <div class="fac-card">
-        <div class="fac-ttl">${f.titulo}</div>
+      <div class="fac-card" style="position:relative">
+        <button onclick="eliminarFactor(${i})" title="Eliminar factor" style="position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:white;color:var(--muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-weight:700;line-height:1">×</button>
+        <div class="fac-ttl" style="padding-right:24px">${f.titulo}</div>
         <div class="fac-body">${f.cuerpo}</div>
         <div class="fac-edit">
           <input type="text" value="${f.titulo}" oninput="S.factores[${i}].titulo=this.value">
           <textarea oninput="S.factores[${i}].cuerpo=this.value">${f.cuerpo}</textarea>
         </div>
       </div>`).join(''):''}
-    ${!S.loadingFactores?`<button class="btn-sm ${!S.factores.length?'pri':''}" onclick="generarFactores()" style="margin-top:${S.factores.length?'8px':'0'}">
-      ${S.factores.length?'↺ Regenerar factores':'✨ Generar factores con IA'}
-    </button>`:''}
+    ${!S.loadingFactores?`<div style="display:flex;gap:8px;margin-top:${S.factores.length?'8px':'0'};flex-wrap:wrap">
+      <button class="btn-sm ${!S.factores.length?'pri':''}" onclick="generarFactores()">
+        ${S.factores.length?'↺ Regenerar':'✨ Generar factores con IA'}
+      </button>
+      ${S.factores.length?`<button class="btn-sm" onclick="limpiarFactores()" style="color:var(--sr-ac);border-color:var(--sr-bg);background:var(--sr-bg)">🗑 Limpiar todos</button>`:''}
+    </div>`:''}
   </div>
 
   <!-- Línea de servicio -->
@@ -1241,10 +1245,10 @@ async function cargarYAbrir(nombre){
 
 async function eliminarHist(nombre){
   const n=decodeURIComponent(nombre);
-  if(!confirm(`¿Eliminar el diagnóstico "\${n}"?`))return;
-  const _s=await getSaved();const saved=_s.filter(d=>d.nombre!==n);
-  localStorage.setItem('ca_diag',JSON.stringify(saved));
-  render();
+  if(!confirm(`¿Eliminar el diagnóstico "${n}"?`))return;
+  await deleteSaved(n);   // borra de Sheets + localStorage
+  _homeData = null;        // invalida cache para forzar recarga
+  render();                // recarga la vista home
 }
 
 async function generarPDFDesdeHistorial(nombre){
@@ -1295,6 +1299,17 @@ async function guardarYSalir(){
 function salirSinGuardar(){
   closeExitModal();
   goTo('home');
+}
+
+function eliminarFactor(i){
+  S.factores.splice(i,1);
+  render();
+}
+
+function limpiarFactores(){
+  if(!confirm('¿Eliminar todos los factores generados?')) return;
+  S.factores=[];
+  render();
 }
 
 render();
