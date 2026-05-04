@@ -48,12 +48,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--tex
 
 /* ── DESKTOP OVERRIDE ─────────────────────────────────────────────── */
 @media(min-width:768px){
-  .app{display:grid;grid-template-columns:240px 1fr;grid-template-rows:auto 1fr;grid-template-areas:"sb sb" "sb main";}
+  .app{display:block;}
   .topbar{display:none;}
   .progress-bar{display:none;}
   .step-indicator{display:none;}
-  .sidebar{display:flex !important;grid-area:sb;width:240px;position:fixed;top:0;left:0;height:100vh;}
-  .main-scroll{grid-area:main;margin-left:240px;padding:28px 36px;max-width:720px;}
+  .sidebar{display:flex !important;width:240px;position:fixed;top:0;left:0;height:100vh;z-index:50;}
+  .main-scroll{margin-left:240px;padding:28px 40px;min-height:100vh;}
+  #mainContent{max-width:680px;margin:0 auto;}
 }
 
 /* ── SIDEBAR (desktop only) ───────────────────────────────────────── */
@@ -334,7 +335,7 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 const AREAS=[
   {id:'legal',label:'Legal',emoji:'⚖️',items:[
     {t:'Reglamento de copropiedad vigente y actualizado (post Ley 21.442)',w:'c'},
-    {t:'Personalidad jurídica de la comunidad vigente e inscrita en el CBR',w:'c'},
+    {t:'Reglamento de copropiedad vigente, actualizado post Ley 21.442 e inscrito en el CBR',w:'c'},
     {t:'Comité de Administración constituido en escritura pública',w:'c'},
     {t:'Actas de asambleas y reuniones de comité disponibles (últimos 2 años)',w:'i'},
     {t:'Sin conflictos legales activos contra la comunidad',w:'i'},
@@ -472,29 +473,74 @@ function critData(score){
   return{fg:'var(--sr-fg)',bg:'var(--sr-bg)',ac:'var(--sr-ac)',lbl:'Crítico',desc:'Se detectan deficiencias graves. Se requiere intervención urgente para evitar consecuencias legales y financieras.'};
 }
 
-// ─── STORAGE ──────────────────────────────────────────────────────────────────
-function getSaved(){try{return JSON.parse(localStorage.getItem('ca_diag')||'[]');}catch(e){return[];}}
-function saveDiag(){
-  const saved=getSaved().filter(d=>d.nombre!==S.ctx.nombre);
-  const record={
-    nombre:S.ctx.nombre||'Sin nombre',
-    fecha:new Date().toLocaleDateString('es-CL'),
-    score:globalScore(),
-    linea:lineaActual(),
-    ctx:{...S.ctx},
-    checks:JSON.parse(JSON.stringify(S.checks)),
-    notes:{...S.notes},
-    factores:[...S.factores],
-    valorMin:S.valorMin,valorMax:S.valorMax,
-    lineaOverride:S.lineaOverride,
+// ─── STORAGE — Google Sheets via Worker ───────────────────────────────────────
+const WORKER_BASE = 'https://coproactiva.osmarmeza-adm7.workers.dev';
+
+// Cache local para no recargar en cada render
+let _cache = null;
+let _cacheTime = 0;
+const CACHE_TTL = 30000; // 30 segundos
+
+async function getSaved() {
+  const now = Date.now();
+  if (_cache && (now - _cacheTime) < CACHE_TTL) return _cache;
+  try {
+    const res = await fetch(`${WORKER_BASE}/diagnosticos`);
+    const data = await res.json();
+    _cache = (data.diagnosticos || []).map(d => ({
+      ...d.payload,
+      id: d.id,
+      fecha: d.fecha,
+      nombre: d.nombre,
+      score: d.score,
+    }));
+    _cacheTime = now;
+    return _cache;
+  } catch(e) {
+    console.error('Error cargando diagnósticos:', e);
+    // Fallback a localStorage
+    try { return JSON.parse(localStorage.getItem('ca_diag')||'[]'); } catch(e2){return[];}
+  }
+}
+
+async function saveDiag() {
+  const id = S.ctx.nombre.trim().toLowerCase().replace(/\s+/g,'_') + '_' + Date.now();
+  const record = {
+    nombre: S.ctx.nombre||'Sin nombre',
+    fecha: new Date().toLocaleDateString('es-CL'),
+    score: globalScore(),
+    linea: lineaActual(),
+    ctx: {...S.ctx},
+    checks: JSON.parse(JSON.stringify(S.checks)),
+    notes: {...S.notes},
+    factores: [...S.factores],
+    valorMin: S.valorMin, valorMax: S.valorMax,
+    lineaOverride: S.lineaOverride,
   };
-  saved.unshift(record);
-  localStorage.setItem('ca_diag',JSON.stringify(saved.slice(0,30)));
+  try {
+    await fetch(`${WORKER_BASE}/diagnosticos`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'guardar', id, fecha:record.fecha, nombre:record.nombre, score:record.score, payload:record })
+    });
+    _cache = null; // invalidar cache
+    // También guardar en localStorage como backup
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==record.nombre);
+    local.unshift(record);
+    localStorage.setItem('ca_diag', JSON.stringify(local.slice(0,30)));
+  } catch(e) {
+    console.error('Error guardando en Sheets, usando localStorage:', e);
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==record.nombre);
+    local.unshift(record);
+    localStorage.setItem('ca_diag', JSON.stringify(local.slice(0,30)));
+  }
   return record;
 }
-function loadDiag(nombre){
-  const d=getSaved().find(x=>x.nombre===nombre);
-  if(!d)return;
+
+async function loadDiag(nombre) {
+  const saved = await getSaved();
+  const d = saved.find(x=>x.nombre===nombre);
+  if(!d) return;
   S.ctx={...d.ctx};
   S.checks=JSON.parse(JSON.stringify(d.checks));
   S.notes={...d.notes};
@@ -502,12 +548,29 @@ function loadDiag(nombre){
   S.valorMin=d.valorMin||'';
   S.valorMax=d.valorMax||'';
   S.lineaOverride=d.lineaOverride||null;
-  closeModal();render();
+  closeModal(); render();
 }
-function deleteSaved(nombre){
-  if(!confirm(`¿Eliminar el diagnóstico "${nombre}"?`))return;
-  const saved=getSaved().filter(d=>d.nombre!==nombre);
-  localStorage.setItem('ca_diag',JSON.stringify(saved));
+
+async function deleteSaved(nombre) {
+  if(!confirm(`¿Eliminar el diagnóstico "${nombre}"?`)) return;
+  try {
+    const saved = await getSaved();
+    const d = saved.find(x=>x.nombre===nombre);
+    if(d && d.id) {
+      await fetch(`${WORKER_BASE}/diagnosticos`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'eliminar', id:d.id })
+      });
+    }
+    _cache = null;
+    // También borrar del localStorage
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==nombre);
+    localStorage.setItem('ca_diag', JSON.stringify(local));
+  } catch(e) {
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==nombre);
+    localStorage.setItem('ca_diag', JSON.stringify(local));
+  }
   renderModal();
 }
 
@@ -564,7 +627,10 @@ function render(){
 
   if(!isHome) renderNav();
   const m=document.getElementById('mainContent');
-  if(S.view==='home') m.innerHTML=renderHome();
+  if(S.view==='home') {
+    if(_homeData !== null) m.innerHTML=renderHome();
+    else loadHomeData();
+  }
   else if(S.view==='contexto')m.innerHTML=renderCtx();
   else if(S.view==='revision')m.innerHTML=renderRevision();
   else{const a=AREAS.find(x=>x.id===S.view);if(a)m.innerHTML=renderArea(a);}
@@ -573,7 +639,7 @@ function render(){
 // ─── CONTEXTO ─────────────────────────────────────────────────────────────────
 function renderCtx(){
   const c=S.ctx;
-  const saved=getSaved();
+  const saved=_homeData||[];
   return`
   <div class="ph">
     <div class="ph-title">Datos de la comunidad</div>
@@ -855,9 +921,9 @@ function renderRevision(){
 }
 
 // ─── ACCIONES ──────────────────────────────────────────────────────────────────
-function guardarFormulario(){
+async function guardarFormulario(){
   if(!S.ctx.nombre.trim()){alert('Ingresa el nombre del condominio antes de guardar.');return;}
-  saveDiag();
+  await saveDiag();
   // Flash feedback
   const btn=event.target;const orig=btn.textContent;
   btn.textContent='✓ Guardado';btn.style.background='var(--vd)';btn.style.color='white';btn.style.borderColor='var(--vd)';
@@ -877,8 +943,8 @@ function openModal(){
   document.getElementById('modalBg').classList.add('show');
 }
 function closeModal(){document.getElementById('modalBg').classList.remove('show');}
-function renderModal(){
-  const saved=getSaved();
+async function renderModal(){
+  const saved=await getSaved();
   const ml=document.getElementById('modalList');
   if(!saved.length){ml.innerHTML=`<div class="modal-empty">No hay diagnósticos guardados aún.<br>Completa y guarda un diagnóstico para verlo aquí.</div>`;return;}
   ml.innerHTML=saved.map(d=>{
@@ -897,8 +963,6 @@ function renderModal(){
 
 // ─── FACTORES IA ───────────────────────────────────────────────────────────────
 // URL del Worker — se actualiza después de desplegar en Cloudflare
-const WORKER_URL = 'https://coproactiva.osmarmeza-adm7.workers.dev';
-
 async function generarFactores(){
   S.loadingFactores=true;render();
   const score=globalScore();const crits=critFailing();const c=S.ctx;const lid=lineaActual();
@@ -910,7 +974,7 @@ RESPONDE SOLO con JSON sin bloques de código:
 {"factores":[{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."}]}
 Título máximo 8 palabras. Cuerpo 2 oraciones profesionales para el comité.`;
   try{
-    const res=await fetch(`${WORKER_URL}/factores`,{
+    const res=await fetch(`${WORKER_BASE}/factores`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt})
@@ -1049,8 +1113,26 @@ function generarPDF(){
 }
 
 // ─── HOME VIEW ───────────────────────────────────────────────────────────────
+// Home carga diagnósticos de forma asíncrona
+let _homeData = null;
+let _homeLoading = false;
+
+async function loadHomeData() {
+  _homeLoading = true;
+  document.getElementById('mainContent').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:200px;gap:12px;color:var(--muted)">
+      <div class="spin"></div>
+      <span>Cargando diagnósticos...</span>
+    </div>`;
+  _homeData = await getSaved();
+  _homeLoading = false;
+  if(S.view==='home') {
+    document.getElementById('mainContent').innerHTML = renderHome();
+  }
+}
+
 function renderHome(){
-  const hist=getSaved();
+  const hist=_homeData||[];
   return`
   <div class="home-header">
     <div class="home-logo">
@@ -1100,21 +1182,21 @@ function nuevoDesdeHome(){
   goTo('contexto');
 }
 
-function cargarYAbrir(nombre){
-  loadDiag(decodeURIComponent(nombre));
+async function cargarYAbrir(nombre){
+  await loadDiag(decodeURIComponent(nombre));
   goTo('contexto');
 }
 
-function eliminarHist(nombre){
+async function eliminarHist(nombre){
   const n=decodeURIComponent(nombre);
   if(!confirm(`¿Eliminar el diagnóstico "\${n}"?`))return;
-  const saved=getSaved().filter(d=>d.nombre!==n);
+  const _s=await getSaved();const saved=_s.filter(d=>d.nombre!==n);
   localStorage.setItem('ca_diag',JSON.stringify(saved));
   render();
 }
 
-function generarPDFDesdeHistorial(nombre){
-  const d=getSaved().find(x=>x.nombre===decodeURIComponent(nombre));
+async function generarPDFDesdeHistorial(nombre){
+  const _sv=await getSaved();const d=_sv.find(x=>x.nombre===decodeURIComponent(nombre));
   if(!d)return;
   // Temporarily load data for PDF generation
   const prevCtx={...S.ctx};const prevChecks=JSON.parse(JSON.stringify(S.checks));
@@ -1141,7 +1223,7 @@ function openExitModal(){
 }
 function closeExitModal(){document.getElementById('exitModalBg').classList.remove('show');}
 
-function guardarYSalir(){
+async function guardarYSalir(){
   if(!S.ctx.nombre?.trim()){
     closeExitModal();
     alert('Ingresa el nombre del condominio para poder guardar.');
