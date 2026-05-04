@@ -216,6 +216,23 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
 .modal-item-meta{font-size:11.5px;color:var(--muted);}
 .modal-item-score{font-size:13px;font-weight:700;padding:3px 9px;border-radius:10px;}
 .modal-empty{text-align:center;padding:24px;color:var(--muted);font-size:13px;}
+/* Modal detalle de área */
+.area-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;align-items:center;justify-content:center;padding:16px;}
+.area-modal-bg.show{display:flex;}
+.area-modal{background:white;border-radius:var(--r-xl);width:100%;max-width:480px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.18);animation:slideUp 0.2s ease;}
+.area-modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:white;z-index:1;}
+.area-modal-ttl{font-size:16px;font-weight:700;color:var(--az);display:flex;align-items:center;gap:8px;}
+.area-modal-score{font-size:13px;font-weight:700;padding:3px 10px;border-radius:20px;}
+.area-modal-close{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surf);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--muted);flex-shrink:0;}
+.area-modal-body{padding:14px 18px 18px;}
+.area-modal-section{margin-bottom:14px;}
+.area-modal-section-ttl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;}
+.area-modal-item{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border-radius:6px;margin-bottom:5px;}
+.area-modal-item.fail{background:var(--sr-bg);}
+.area-modal-item.ok{background:var(--sg-bg);}
+.area-modal-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;flex-shrink:0;margin-top:2px;white-space:nowrap;}
+.area-modal-item-txt{font-size:13px;line-height:1.4;}
+.area-modal-obs{font-size:12.5px;color:var(--az-md);padding:8px 10px;background:var(--surf);border-radius:6px;border-left:2.5px solid var(--na);line-height:1.5;}
 /* Exit modal */
 .exit-options{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
 .exit-opt{display:flex;align-items:center;gap:12px;padding:14px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all 0.13s;background:var(--bg);}
@@ -300,6 +317,27 @@ button:disabled{opacity:0.4;cursor:not-allowed;}
     <div style="margin-top:12px">
       <button class="ghost btn-sm" onclick="closeModal()" style="width:100%">Cancelar</button>
     </div>
+  </div>
+</div>
+
+<!-- TOAST feedback guardado -->
+<div id="toastGuardado" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--az);color:white;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:500;box-shadow:0 4px 16px rgba(0,0,0,0.2);transition:opacity 0.3s;gap:8px;align-items:center">
+  <span id="toastIcon">💾</span>
+  <span id="toastMsg">Guardando...</span>
+</div>
+
+<!-- MODAL detalle de área -->
+<div class="area-modal-bg" id="areaModalBg" onclick="closeAreaModal()">
+  <div class="area-modal" onclick="event.stopPropagation()">
+    <div class="area-modal-hdr">
+      <div class="area-modal-ttl">
+        <span id="areaModalEmoji"></span>
+        <span id="areaModalTtl">Área</span>
+        <span class="area-modal-score" id="areaModalScore"></span>
+      </div>
+      <div class="area-modal-close" onclick="closeAreaModal()">×</div>
+    </div>
+    <div class="area-modal-body" id="areaModalBody"></div>
   </div>
 </div>
 
@@ -504,9 +542,14 @@ async function getSaved() {
 }
 
 async function saveDiag() {
-  const id = S.ctx.nombre.trim().toLowerCase().replace(/\s+/g,'_') + '_' + Date.now();
+  const nombre = S.ctx.nombre?.trim() || 'Sin nombre';
+  // ID estable basado en el nombre — siempre el mismo para el mismo condominio
+  // Así al guardar de nuevo reemplaza en vez de duplicar
+  const id = 'diag_' + nombre.toLowerCase().replace(/[^a-z0-9]/g,'_').substring(0,40);
+
   const record = {
-    nombre: S.ctx.nombre||'Sin nombre',
+    id,
+    nombre,
     fecha: new Date().toLocaleDateString('es-CL'),
     score: globalScore(),
     linea: lineaActual(),
@@ -517,22 +560,31 @@ async function saveDiag() {
     valorMin: S.valorMin, valorMax: S.valorMax,
     lineaOverride: S.lineaOverride,
   };
+
+  showToast('Guardando...', '💾', 60000); // toast permanente hasta confirmar
+
   try {
-    await fetch(`${WORKER_BASE}/diagnosticos`, {
+    const res = await fetch(`${WORKER_BASE}/diagnosticos`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'guardar', id, fecha:record.fecha, nombre:record.nombre, score:record.score, payload:record })
+      body: JSON.stringify({ action:'guardar', id, fecha:record.fecha, nombre, score:record.score, payload:record })
     });
-    _cache = null; // invalidar cache
-    // También guardar en localStorage como backup
-    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==record.nombre);
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error||'Error desconocido');
+
+    _cache = null;
+    // Backup localStorage
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==nombre);
     local.unshift(record);
     localStorage.setItem('ca_diag', JSON.stringify(local.slice(0,30)));
+
+    showToast('Guardado correctamente', '✅', 2500);
   } catch(e) {
     console.error('Error guardando en Sheets, usando localStorage:', e);
-    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==record.nombre);
+    const local = JSON.parse(localStorage.getItem('ca_diag')||'[]').filter(d=>d.nombre!==nombre);
     local.unshift(record);
     localStorage.setItem('ca_diag', JSON.stringify(local.slice(0,30)));
+    showToast('Guardado localmente (sin conexión)', '⚠️', 3000);
   }
   return record;
 }
@@ -843,28 +895,12 @@ function renderRevision(){
   <!-- Grilla de áreas -->
   <div class="ag">${AREAS.map(a=>{
     const s=scoreArea(a);const sem=semC(s?s.pct:null);
-    const fallidos=a.items.filter((it,i)=>itemApplies(it)&&!S.checks[a.id][i]);
-    const cumplidos=a.items.filter((it,i)=>itemApplies(it)&&S.checks[a.id][i]);
-    const note=S.notes[a.id]?.trim();
-    const aId='area_'+a.id;
-    return`<div class="ac" style="cursor:pointer" onclick="toggleAreaDetail('${a.id}')">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="ac-name">${a.label}</div>
-        <span id="arrow_${a.id}" style="font-size:10px;color:var(--muted);transition:transform 0.2s">▼</span>
-      </div>
+    return`<div class="ac" style="cursor:pointer" onclick="openAreaModal('${a.id}')" title="Ver detalle de ${a.label}">
+      <div class="ac-name">${a.label}</div>
       <div class="ac-pct" style="color:${sem.fg}">${s?s.pct+'%':'—'}</div>
       <div class="ac-bar"><div class="ac-fill" style="width:${s?s.pct:0}%;background:${sem.ac}"></div></div>
       <div class="ac-lbl" style="color:${sem.fg}">${sem.lbl}</div>
-      <div id="detail_${a.id}" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
-        ${fallidos.length?`<div style="font-size:11px;font-weight:700;color:var(--sr-ac);margin-bottom:4px">Sin cumplir</div>
-          ${fallidos.map(it=>`<div style="font-size:11px;color:var(--text);padding:3px 0;border-bottom:1px solid var(--surf);display:flex;gap:6px;align-items:flex-start">
-            <span style="font-size:9px;padding:1px 5px;border-radius:8px;flex-shrink:0;margin-top:1px;font-weight:700;background:${{c:'var(--sr-bg)',i:'var(--sa-bg)',b:'var(--sg-bg)'}[it.w]};color:${{c:'var(--sr-ac)',i:'var(--sa-ac)',b:'var(--sg-ac)'}[it.w]}">${{c:'C',i:'I',b:'B'}[it.w]}</span>
-            ${it.t}
-          </div>`).join('')}`:''}
-        ${cumplidos.length?`<div style="font-size:11px;font-weight:700;color:var(--sg-fg);margin-top:6px;margin-bottom:4px">Cumplidos</div>
-          ${cumplidos.map(it=>`<div style="font-size:11px;color:var(--muted);padding:3px 0;border-bottom:1px solid var(--surf)">✓ ${it.t}</div>`).join('')}`:''}
-        ${note?`<div style="font-size:11px;color:var(--az-md);margin-top:6px;padding:5px 7px;background:var(--surf);border-radius:5px;border-left:2px solid var(--na)">📝 ${note}</div>`:''}
-      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center">Toca para ver detalle</div>
     </div>`;}).join('')}</div>
 
   <!-- Ítems críticos -->
@@ -943,19 +979,13 @@ function renderRevision(){
 
 // ─── ACCIONES ──────────────────────────────────────────────────────────────────
 async function guardarFormulario(){
-  if(!S.ctx.nombre.trim()){alert('Ingresa el nombre del condominio antes de guardar.');return;}
-  const btn=event.target;
-  btn.textContent='Guardando...';btn.disabled=true;
-  try {
-    await saveDiag();
-    _homeData = null; // invalidar cache
-    const orig='💾 Guardar';
-    btn.textContent='✓ Guardado';btn.style.background='var(--vd)';btn.style.color='white';btn.style.borderColor='var(--vd)';
-    setTimeout(()=>{btn.textContent=orig;btn.style.background='';btn.style.color='';btn.style.borderColor='';btn.disabled=false;},1800);
-  } catch(e) {
-    btn.textContent='Error — reintentar';btn.disabled=false;
-    console.error('Error guardando:', e);
+  if(!S.ctx.nombre?.trim()){
+    alert('Ingresa el nombre del condominio antes de guardar.');
+    goTo('contexto');
+    return;
   }
+  await saveDiag();
+  _homeData = null;
 }
 
 function limpiarFormulario(){
@@ -1038,11 +1068,18 @@ async function generarFactores(){
 CONTEXTO DE LA EMPRESA:
 CoproActiva es una empresa de administración de condominios que está elaborando una propuesta comercial para una comunidad que aún no es su cliente. Los "factores destacados" son observaciones técnicas que justifican por qué esta comunidad necesita apoyo profesional. Van dirigidos al comité de administración, no a CoproActiva.
 
-ADVERTENCIA IMPORTANTE SOBRE LOS DATOS:
-La información fue proporcionada de forma PRELIMINAR por el propio comité de administración durante una reunión inicial. No existe verificación documental ni auditoría formal. Por lo tanto:
-- Redacta los factores con lenguaje que refleje esta incertidumbre (ej: "según lo declarado por el comité", "de confirmarse esta situación", "de acuerdo a lo informado")
-- NO afirmes categóricamente que algo "no existe" o "está incumplido" — di que "no fue posible acreditar" o "no se cuenta con respaldo documentado"
-- El tono debe ser de alerta profesional, no de acusación
+FUENTE DE INFORMACIÓN Y ENFOQUE:
+Tu única fuente de análisis es el checklist de ítems no cumplidos. NO uses las observaciones del comité como base para los factores — esas son notas internas de contexto.
+Fundamenta cada factor en:
+1. El ítem específico del checklist que no se cumplió
+2. La obligación legal correspondiente según la Ley 21.442, su reglamento o normativa complementaria de copropiedad en Chile
+3. El riesgo concreto que representa ese incumplimiento para la comunidad (responsabilidad legal, multas, pérdida patrimonial, conflictos, etc.)
+
+TONO Y CERTEZA:
+Los datos son preliminares — el comité declaró no tener estos documentos o no saber si los tienen. Redacta con lenguaje que indique riesgo potencial:
+- Usa frases como: "La ausencia de...", "La falta de...", "No contar con..."
+- NO uses: "según el comité", "en la reunión se mencionó", "el comité informó"
+- El factor debe sonar como un análisis técnico-legal, no como un relato de la reunión
 
 DATOS DEL CONDOMINIO EVALUADO:
 - Nombre: ${c.nombre||'Sin nombre'}
@@ -1059,14 +1096,15 @@ DATOS DEL CONDOMINIO EVALUADO:
 
 INSTRUCCIONES:
 Genera exactamente 3 factores destacados. Cada factor debe:
-1. Referirse a una situación REAL del condominio basada en los datos anteriores
-2. Explicar el RIESGO o IMPACTO concreto para la comunidad si no se aborda
-3. Estar redactado para el comité (lenguaje claro, sin tecnicismos innecesarios)
-4. NO mencionar a CoproActiva — los factores describen problemas del condominio, no soluciones
-5. NO confundir la antigüedad del edificio con la trayectoria de ninguna empresa
-6. Si el sistema de gestión es ${c.sistema||'ninguno'}, el factor debe referirse a ESE sistema específico y sus implicancias reales
-7. Basa cada factor en UN ítem específico no cumplido — no en el porcentaje general del área. El título debe nombrar el problema concreto, no el área genérica (ej: "Fondo de reserva inexistente" en vez de "Problemas financieros")
-8. Prioriza los ítems marcados como [CRÍTICO] sobre los [IMPORTANTE] y [BÁSICO]
+1. Basarse en UN ítem específico marcado como no cumplido en el checklist — especialmente los [CRÍTICO]
+2. Citar o referenciar la norma legal aplicable (Ley 21.442, su reglamento u otra normativa de copropiedad chilena)
+3. Explicar el riesgo o consecuencia legal, financiera o de seguridad que implica ese incumplimiento
+4. Estar redactado para el comité: claro, directo, sin jerga legal excesiva
+5. NO mencionar a CoproActiva
+6. NO confundir antigüedad del edificio con trayectoria de empresas
+7. NO basarte en las observaciones del comité — solo en el checklist
+8. Si hay ítems laborales sin cumplir, menciona la responsabilidad solidaria del comité ante la Inspección del Trabajo
+9. Si no hay ascensores ni gas, no inventes factores técnicos de esas instalaciones
 
 RESPONDE SOLO con JSON válido, sin texto adicional, sin bloques de código markdown:
 {"factores":[{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."}]}
@@ -1330,28 +1368,91 @@ async function guardarYSalir(){
     goTo('contexto');
     return;
   }
-  try {
-    await saveDiag();
-    _homeData = null; // forzar recarga del historial
-    closeExitModal();
-    goTo('home');
-  } catch(e) {
-    console.error('Error guardando:', e);
-    alert('Hubo un error al guardar. Intenta nuevamente.');
-  }
+  closeExitModal();
+  await saveDiag();
+  _homeData = null;
+  goTo('home');
 }
 function salirSinGuardar(){
   closeExitModal();
   goTo('home');
 }
 
-function toggleAreaDetail(aId){
-  const detail = document.getElementById('detail_'+aId);
-  const arrow = document.getElementById('arrow_'+aId);
-  if(!detail) return;
-  const isOpen = detail.style.display !== 'none';
-  detail.style.display = isOpen ? 'none' : 'block';
-  if(arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+function showToast(msg, icon='💾', duration=2500){
+  const t = document.getElementById('toastGuardado');
+  document.getElementById('toastMsg').textContent = msg;
+  document.getElementById('toastIcon').textContent = icon;
+  t.style.display = 'flex';
+  t.style.opacity = '1';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{
+    t.style.opacity = '0';
+    setTimeout(()=>{ t.style.display = 'none'; }, 300);
+  }, duration);
+}
+
+function openAreaModal(aId){
+  const area = AREAS.find(a=>a.id===aId);
+  if(!area) return;
+  const s = scoreArea(area);
+  const sem = semC(s?s.pct:null);
+
+  document.getElementById('areaModalEmoji').textContent = area.emoji||'';
+  document.getElementById('areaModalTtl').textContent = area.label;
+  const scoreEl = document.getElementById('areaModalScore');
+  scoreEl.textContent = s ? s.pct+'% — '+sem.lbl : 'No aplica';
+  scoreEl.style.background = sem.bg;
+  scoreEl.style.color = sem.fg;
+
+  const fallidos = area.items.filter((it,i)=>itemApplies(it)&&!S.checks[aId][i]);
+  const cumplidos = area.items.filter((it,i)=>itemApplies(it)&&S.checks[aId][i]);
+  const note = S.notes[aId]?.trim();
+  const wLabel = {c:'Crítico',i:'Importante',b:'Básico'};
+  const wFg = {c:'var(--sr-ac)',i:'var(--sa-ac)',b:'var(--sg-ac)'};
+  const wBg = {c:'var(--sr-bg)',i:'var(--sa-bg)',b:'var(--sg-bg)'};
+
+  let html = '';
+
+  if(!s){
+    html = '<p style="color:var(--muted);font-size:13px;padding:8px 0">Esta área no aplica para este condominio.</p>';
+  } else {
+    if(fallidos.length){
+      html += `<div class="area-modal-section">
+        <div class="area-modal-section-ttl" style="color:var(--sr-ac)">⚠️ Sin cumplir (${fallidos.length})</div>
+        ${fallidos.map(it=>`<div class="area-modal-item fail">
+          <span class="area-modal-badge" style="background:${wBg[it.w]};color:${wFg[it.w]}">${wLabel[it.w]}</span>
+          <span class="area-modal-item-txt">${it.t}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+    if(cumplidos.length){
+      html += `<div class="area-modal-section">
+        <div class="area-modal-section-ttl" style="color:var(--sg-fg)">✓ Cumplidos (${cumplidos.length})</div>
+        ${cumplidos.map(it=>`<div class="area-modal-item ok">
+          <span class="area-modal-badge" style="background:var(--sg-bg);color:var(--sg-fg)">✓</span>
+          <span class="area-modal-item-txt" style="color:var(--az-md)">${it.t}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+    if(note){
+      html += `<div class="area-modal-section">
+        <div class="area-modal-section-ttl" style="color:var(--az-md)">📝 Observación anotada</div>
+        <div class="area-modal-obs">${note}</div>
+      </div>`;
+    }
+    if(!fallidos.length && !cumplidos.length){
+      html = '<p style="color:var(--muted);font-size:13px;padding:8px 0">Sin ítems evaluados en esta área.</p>';
+    }
+  }
+
+  document.getElementById('areaModalBody').innerHTML = html;
+  document.getElementById('areaModalBg').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAreaModal(){
+  document.getElementById('areaModalBg').classList.remove('show');
+  document.body.style.overflow = '';
 }
 
 function eliminarFactor(i){
