@@ -1159,11 +1159,7 @@ Cuerpo: exactamente 2 oraciones. Primera: describe el problema. Segunda: explica
   try{
     const res=await fetch(`${WORKER_BASE}/factores`,{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Cache-Control':'no-cache, no-store',
-        'Pragma':'no-cache'
-      },
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt: finalPrompt})
     });
     if(!res.ok) throw new Error(`Worker error: ${res.status}`);
