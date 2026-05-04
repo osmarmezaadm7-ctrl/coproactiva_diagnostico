@@ -1156,20 +1156,43 @@ Cuerpo: exactamente 2 oraciones. Primera: describe el problema. Segunda: explica
     : '';
   const finalPrompt = prompt + variation;
 
+  // Verificar tamaño del prompt — si es muy largo, resumir
+  console.log('Prompt length:', finalPrompt.length, 'chars');
+
   try{
     const res=await fetch(`${WORKER_BASE}/factores`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt: finalPrompt})
     });
-    if(!res.ok) throw new Error(`Worker error: ${res.status}`);
+
+    if(!res.ok){
+      const errText = await res.text();
+      console.error('Worker response error:', res.status, errText);
+      throw new Error(`Error del servidor: ${res.status}`);
+    }
+
     const data=await res.json();
+    console.log('Worker response:', data);
+
     if(data.error) throw new Error(data.error);
-    const parsed = JSON.parse(data.text.replace(/```json|```/g,'').trim());
-    S.factores = parsed.factores || [];
+    if(!data.text) throw new Error('Respuesta vacía del servidor');
+
+    const cleaned = data.text.replace(/```json|```/g,'').trim();
+    console.log('Cleaned response:', cleaned.substring(0,200));
+
+    const parsed = JSON.parse(cleaned);
+    if(!parsed.factores || !Array.isArray(parsed.factores)){
+      throw new Error('Formato de respuesta inválido');
+    }
+    S.factores = parsed.factores;
+
   }catch(e){
-    console.error('Factor generation error:',e);
-    S.factores=[{titulo:'Error al generar',cuerpo:'Verifica la conexión o ingresa los factores manualmente.'}];
+    console.error('Factor generation error:', e.message, e);
+    S.factores=[{
+      titulo:'Error al generar factores',
+      cuerpo:`${e.message}. Puedes ingresar los factores manualmente o intentar nuevamente.`
+    }];
   }
   S.loadingFactores=false;render();
 }
