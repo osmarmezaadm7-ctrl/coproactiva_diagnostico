@@ -977,13 +977,32 @@ async function renderModal(){
 async function generarFactores(){
   S.loadingFactores=true;render();
   const score=globalScore();const crits=critFailing();const c=S.ctx;const lid=lineaActual();
-  // Construir observaciones por área para dar más contexto
+  // Construir detalle completo por área: puntaje + ítems fallidos + observaciones
   const obsCtx = AREAS.map(a=>{
     const s=scoreArea(a);
-    const note=S.notes[a.id]?.trim();
     if(!s) return null;
-    return `${a.label} (${s.pct}%${note?': '+note:''})`;
-  }).filter(Boolean).join(' | ');
+
+    // Ítems que NO se cumplieron, separados por peso
+    const fallidos = a.items
+      .filter((it,i) => itemApplies(it) && !S.checks[a.id][i])
+      .map(it => {
+        const peso = {c:'[CRÍTICO]', i:'[IMPORTANTE]', b:'[BÁSICO]'}[it.w];
+        return `${peso} ${it.t}`;
+      });
+
+    // Ítems que SÍ se cumplieron
+    const cumplidos = a.items
+      .filter((it,i) => itemApplies(it) && S.checks[a.id][i])
+      .map(it => it.t);
+
+    const note=S.notes[a.id]?.trim();
+
+    let ctx = `${a.label} (${s.pct}% de cumplimiento)`;
+    if(fallidos.length) ctx += `\n  Sin cumplir: ${fallidos.join('; ')}`;
+    if(cumplidos.length) ctx += `\n  Cumplidos: ${cumplidos.join('; ')}`;
+    if(note) ctx += `\n  Observación del comité: "${note}"`;
+    return ctx;
+  }).filter(Boolean).join('\n\n');
 
   const sistemaCtx = c.sistema
     ? `La comunidad usa ${c.sistema} como sistema de gestión de gastos comunes. Esto significa que ya tienen una plataforma, pero hay que evaluar si está bien configurada y al día.`
@@ -1011,7 +1030,7 @@ DATOS DEL CONDOMINIO EVALUADO:
 - Sistema de gestión: ${sistemaCtx}
 - Puntaje global del diagnóstico: ${score}% (${score>=70?'Estable':score>=40?'En riesgo':'Crítico'})
 - Línea de servicio recomendada: ${lid} — ${LINEAS[lid]?.sublabel||''}
-- Estado por área: ${obsCtx}
+- Estado detallado por área (incluye ítems específicos cumplidos y no cumplidos):\n${obsCtx}
 - Ítems críticos sin resolver: ${crits.length>0?crits.map(x=>x.area+': '+x.text).join('; '):'Ninguno'}
 - Áreas con cumplimiento bajo 40%: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'Ninguna'}
 
@@ -1023,6 +1042,8 @@ Genera exactamente 3 factores destacados. Cada factor debe:
 4. NO mencionar a CoproActiva — los factores describen problemas del condominio, no soluciones
 5. NO confundir la antigüedad del edificio con la trayectoria de ninguna empresa
 6. Si el sistema de gestión es ${c.sistema||'ninguno'}, el factor debe referirse a ESE sistema específico y sus implicancias reales
+7. Basa cada factor en UN ítem específico no cumplido — no en el porcentaje general del área. El título debe nombrar el problema concreto, no el área genérica (ej: "Fondo de reserva inexistente" en vez de "Problemas financieros")
+8. Prioriza los ítems marcados como [CRÍTICO] sobre los [IMPORTANTE] y [BÁSICO]
 
 RESPONDE SOLO con JSON válido, sin texto adicional, sin bloques de código markdown:
 {"factores":[{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."},{"titulo":"...","cuerpo":"..."}]}
