@@ -491,7 +491,7 @@ function defaultState(){return{
 };}
 let S={...defaultState(),view:'home'};
 
-// ─── SCORING ──────────────────────────────────────────────────────────────────
+// ─── SCORING REFINADO ────────────────────────────────────────────────────────
 function itemApplies(it){
   if(!it.cond)return true;
   if(it.cond==='locales')return S.ctx.locales==='si';
@@ -505,42 +505,100 @@ function areaApplies(a){
 }
 function scoreArea(a){
   if(!areaApplies(a))return null;
-  let e=0,p=0;
-  a.items.forEach((it,i)=>{if(!itemApplies(it))return;const w=WP[it.w];p+=w;if(S.checks[a.id][i])e+=w;});
-  return p===0?null:{pct:Math.round(e/p*100),earned:e,possible:p};
+  let earned=0,possible=0;
+  a.items.forEach((it,i)=>{
+    if(!itemApplies(it))return; // NA excluido del denominador
+    const w=WP[it.w]; possible+=w;
+    if(S.checks[a.id][i])earned+=w;
+  });
+  if(possible===0)return null;
+  const pct=Math.round(earned/possible*100);
+  const critFail=a.items.filter((it,i)=>it.w==='c'&&itemApplies(it)&&!S.checks[a.id][i]).length;
+  return{pct,earned,possible,critFail};
 }
 function globalScore(){
-  let t=0,n=0;AREAS.forEach(a=>{const s=scoreArea(a);if(s){t+=s.pct;n++;}});
+  let t=0,n=0;
+  AREAS.forEach(a=>{const s=scoreArea(a);if(s){t+=s.pct;n++;}});
   return n>0?Math.round(t/n):0;
 }
 function critFailing(){
   const out=[];
-  AREAS.forEach(a=>{if(!areaApplies(a))return;
-    a.items.forEach((it,i)=>{if(it.w==='c'&&itemApplies(it)&&!S.checks[a.id][i])out.push({text:it.t,area:a.label});});
-  });return out;
+  AREAS.forEach(a=>{
+    if(!areaApplies(a))return;
+    a.items.forEach((it,i)=>{
+      if(it.w==='c'&&itemApplies(it)&&!S.checks[a.id][i])
+        out.push({text:it.t,area:a.label});
+    });
+  });
+  return out;
 }
-function lineaSugerida(){
+
+// ── Análisis completo — 4 niveles + gatillos ─────────────────────────────────
+function getDiagnostico(){
   const score=globalScore();
-  const reds=AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).length;
-  const trabajadores=parseInt(S.ctx.trabajadores||'0');
-  // Señales hacia L3: puntaje muy bajo o sin historial claro
-  if(score<30)return'L3';
-  // L1: buen puntaje y pocas brechas críticas
-  if(score>=65&&reds<2)return'L1';
-  // L2: por defecto en rango medio o con brechas importantes
+  const crits=critFailing();
+  const hasCritFail=crits.length>0;
+
+  // Áreas con puntaje < 60% (foco de riesgo prioritario)
+  const areasLow=AREAS
+    .map(a=>({...a,score:scoreArea(a)}))
+    .filter(a=>a.score&&a.score.pct<60);
+
+  // Áreas en rojo (< 40%)
+  const areasRed=areasLow.filter(a=>a.score.pct<40);
+
+  // Intervención prioritaria si hay crítico incumplido o área < 60%
+  const requiereIntervencion=hasCritFail||areasLow.length>0;
+
+  // Clasificación de 4 niveles
+  let nivel,desc;
+  if(score>=70&&areasLow.length===0){
+    nivel='Estable';
+    desc='La comunidad presenta una gestión ordenada en todas las áreas. CoproActiva puede optimizarla de manera continua.';
+  } else if(score>=70&&areasLow.length>0){
+    nivel='Estable con observaciones';
+    const nombresLow=areasLow.map(a=>a.label).join(', ');
+    desc=`El puntaje global es satisfactorio, pero se identifican focos de riesgo prioritario en: ${nombresLow}. Estas áreas requieren atención aunque el resultado global sea positivo.`;
+  } else if(score>=40){
+    nivel='En riesgo';
+    desc='Existen aspectos que requieren intervención moderada. Sin acción oportuna pueden derivar en problemas administrativos, legales o financieros de mayor envergadura.';
+  } else {
+    nivel='Crítico';
+    desc='Se detectan deficiencias graves en una o más áreas. Se requiere intervención urgente para evitar consecuencias legales y financieras significativas.';
+  }
+
+  return{score,nivel,desc,hasCritFail,crits,areasLow,areasRed,requiereIntervencion};
+}
+
+// ── Línea sugerida ────────────────────────────────────────────────────────────
+function lineaSugerida(){
+  const d=getDiagnostico();
+  if(d.score<30)return'L3';
+  if(d.score>=65&&d.areasRed.length<2)return'L1';
   return'L2';
 }
 function lineaActual(){return S.lineaOverride||lineaSugerida();}
+
+// ── Semáforo por área ─────────────────────────────────────────────────────────
 function semC(pct){
   if(pct==null)return{fg:'var(--az-md)',bg:'var(--surf)',ac:'var(--border)',lbl:'No aplica'};
-  if(pct>=70)return{fg:'var(--sg-fg)',bg:'var(--sg-bg)',ac:'var(--sg-ac)',lbl:'Bien'};
-  if(pct>=40)return{fg:'var(--sa-fg)',bg:'var(--sa-bg)',ac:'var(--sa-ac)',lbl:'En riesgo'};
+  if(pct>=70) return{fg:'var(--sg-fg)',bg:'var(--sg-bg)',ac:'var(--sg-ac)',lbl:'Bien'};
+  if(pct>=60) return{fg:'var(--sg-fg)',bg:'var(--sg-bg)',ac:'var(--sg-ac)',lbl:'Bien'};
+  if(pct>=40) return{fg:'var(--sa-fg)',bg:'var(--sa-bg)',ac:'var(--sa-ac)',lbl:'En riesgo'};
   return{fg:'var(--sr-fg)',bg:'var(--sr-bg)',ac:'var(--sr-ac)',lbl:'Crítico'};
 }
+
+// ── Criticidad global ─────────────────────────────────────────────────────────
 function critData(score){
-  if(score>=70)return{fg:'var(--sg-fg)',bg:'var(--sg-bg)',ac:'var(--sg-ac)',lbl:'Estable',desc:'La comunidad presenta una gestión ordenada. CoproActiva puede optimizarla de manera continua.'};
-  if(score>=40)return{fg:'var(--sa-fg)',bg:'var(--sa-bg)',ac:'var(--sa-ac)',lbl:'En riesgo',desc:'Hay aspectos que requieren intervención moderada. Sin acción oportuna pueden derivar en problemas mayores.'};
-  return{fg:'var(--sr-fg)',bg:'var(--sr-bg)',ac:'var(--sr-ac)',lbl:'Crítico',desc:'Se detectan deficiencias graves. Se requiere intervención urgente para evitar consecuencias legales y financieras.'};
+  const d=getDiagnostico();
+  const MAP={
+    'Estable':                  {fg:'var(--sg-fg)',bg:'var(--sg-bg)',ac:'var(--sg-ac)'},
+    'Estable con observaciones':{fg:'var(--sa-fg)',bg:'var(--sa-bg)',ac:'var(--sa-ac)'},
+    'En riesgo':                {fg:'var(--sa-fg)',bg:'var(--sa-bg)',ac:'var(--sa-ac)'},
+    'Crítico':                  {fg:'var(--sr-fg)',bg:'var(--sr-bg)',ac:'var(--sr-ac)'},
+  };
+  const col=MAP[d.nivel]||MAP['En riesgo'];
+  return{...col,lbl:d.nivel,desc:d.desc,requiereIntervencion:d.requiereIntervencion,diag:d};
 }
 
 // ─── STORAGE — Google Sheets via Worker ───────────────────────────────────────
@@ -949,9 +1007,10 @@ function renderRevision(){
       <div class="res-num" style="color:${crit.fg}">${score}</div>
       <div class="res-pct">%</div>
     </div>
-    <div>
+    <div style="flex:1">
       <div class="res-label">${crit.lbl}</div>
       <div class="res-desc">${crit.desc}</div>
+      ${crit.requiereIntervencion?`<div style="margin-top:7px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;display:inline-block;background:rgba(0,0,0,0.1)">⚠ Requiere intervención prioritaria</div>`:''}
     </div>
   </div>
 
@@ -1086,7 +1145,12 @@ async function renderModal(){
 // URL del Worker — se actualiza después de desplegar en Cloudflare
 async function generarFactores(){
   S.loadingFactores=true;render();
-  const score=globalScore();const crits=critFailing();const c=S.ctx;const lid=lineaActual();
+  const diag2=getDiagnostico();
+  const score=diag2.score;const crits=diag2.crits;const c=S.ctx;const lid=lineaActual();
+  const intervencionCtx=diag2.requiereIntervencion?`ALERTA: Diagnóstico nivel "${diag2.nivel}" — requiere intervención prioritaria.`:'';
+  const areasLowCtx=diag2.areasLow.length>0
+    ?`Áreas con cumplimiento bajo 60% (foco de riesgo): ${diag2.areasLow.map(a=>a.label+' ('+a.score.pct+'%)').join(', ')}`
+    :'Todas las áreas con cumplimiento ≥ 60%.';
   // Construir detalle completo por área con lenguaje explícito de ausencia/incumplimiento
   const obsCtx = AREAS.map(a=>{
     const s=scoreArea(a);
@@ -1131,14 +1195,6 @@ async function generarFactores(){
   const antiguedadCtx = c.antiguedad
     ? `El edificio o condominio tiene ${c.antiguedad} años de antigüedad.`
     : '';
-
-  const diag2=getDiagnostico();
-  const intervencionCtx = diag2.requiereIntervencion
-    ? `ALERTA: Este diagnóstico requiere intervención prioritaria. Nivel: ${diag2.nivel}.`
-    : '';
-  const areasLowCtx = diag2.areasLow.length>0
-    ? `Áreas con cumplimiento bajo 60% (foco de riesgo prioritario): ${diag2.areasLow.map(a=>a.label+' ('+a.score.pct+'%)').join(', ')}`
-    : 'Todas las áreas tienen cumplimiento ≥ 60%.';
 
   const prompt=`Eres un experto en administración de condominios en Chile con conocimiento de la Ley 21.442.
 
