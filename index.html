@@ -1132,6 +1132,14 @@ async function generarFactores(){
     ? `El edificio o condominio tiene ${c.antiguedad} años de antigüedad.`
     : '';
 
+  const diag2=getDiagnostico();
+  const intervencionCtx = diag2.requiereIntervencion
+    ? `ALERTA: Este diagnóstico requiere intervención prioritaria. Nivel: ${diag2.nivel}.`
+    : '';
+  const areasLowCtx = diag2.areasLow.length>0
+    ? `Áreas con cumplimiento bajo 60% (foco de riesgo prioritario): ${diag2.areasLow.map(a=>a.label+' ('+a.score.pct+'%)').join(', ')}`
+    : 'Todas las áreas tienen cumplimiento ≥ 60%.';
+
   const prompt=`Eres un experto en administración de condominios en Chile con conocimiento de la Ley 21.442.
 
 CONTEXTO DE LA EMPRESA:
@@ -1173,9 +1181,13 @@ DATOS DEL CONDOMINIO EVALUADO:
 - Servicio recomendado: ${LINEAS[lid]?.label||lid}
 - ESTADO DETALLADO POR ÁREA (cada punto indica explícitamente qué tiene y qué le falta):
 ${obsCtx}
-- Ítems de nivel CRÍTICO que la comunidad NO TIENE o NO CUMPLE:
-${crits.length>0 ? crits.map(x=>`  • [${x.area}] La comunidad NO CUENTA CON: "${x.text}"`).join('\n') : '  Ninguno'}
-- Áreas con cumplimiento bajo 40%: ${AREAS.filter(a=>{const s=scoreArea(a);return s&&s.pct<40;}).map(a=>a.label).join(', ')||'Ninguna'}
+- Detalle de ítems críticos sin cumplir:
+${diag2.crits.length>0 ? diag2.crits.map(x=>`  • [${x.area}] La comunidad NO CUENTA CON: "${x.text}"`).join('\n') : '  Ninguno'}
+- Nivel de criticidad del diagnóstico: ${diag2.nivel}
+- ${intervencionCtx}
+- ${areasLowCtx}
+- Áreas en rojo (cumplimiento < 40%): ${diag2.areasRed.map(a=>a.label).join(', ')||'Ninguna'}
+- Ítems críticos sin cumplir: ${diag2.crits.length}
 
 INSTRUCCIONES:
 Genera exactamente 3 factores destacados. Cada factor debe:
