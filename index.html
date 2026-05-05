@@ -551,14 +551,19 @@ function getDiagnostico(){
   const requiereIntervencion=hasCritFail||areasLow.length>0;
 
   // Clasificación de 4 niveles
+  // Regla: ítems críticos incumplidos o áreas <60% impiden clasificación "Estable limpio"
   let nivel,desc;
-  if(score>=70&&areasLow.length===0){
+  if(score>=70 && areasLow.length===0 && !hasCritFail){
+    // Estable limpio: global ≥70%, todas las áreas ≥60% Y sin críticos incumplidos
     nivel='Estable';
     desc='La comunidad presenta una gestión ordenada en todas las áreas. CoproActiva puede optimizarla de manera continua.';
-  } else if(score>=70&&areasLow.length>0){
+  } else if(score>=70 && (areasLow.length>0 || hasCritFail)){
+    // Estable con observaciones: global ≥70% pero hay áreas <60% o ítems críticos sin cumplir
     nivel='Estable con observaciones';
-    const nombresLow=areasLow.map(a=>a.label).join(', ');
-    desc=`El puntaje global es satisfactorio, pero se identifican focos de riesgo prioritario en: ${nombresLow}. Estas áreas requieren atención aunque el resultado global sea positivo.`;
+    const motivos=[];
+    if(areasLow.length>0) motivos.push(`focos de riesgo en: ${areasLow.map(a=>a.label).join(', ')}`);
+    if(hasCritFail) motivos.push(`${crits.length} ítem(s) crítico(s) sin resolver`);
+    desc=`El puntaje global es satisfactorio, pero se identifican: ${motivos.join(' y ')}. Estos aspectos requieren atención aunque el resultado global sea positivo.`;
   } else if(score>=40){
     nivel='En riesgo';
     desc='Existen aspectos que requieren intervención moderada. Sin acción oportuna pueden derivar en problemas administrativos, legales o financieros de mayor envergadura.';
