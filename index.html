@@ -424,11 +424,13 @@ const AREAS=[
   {id:'laboral',label:'Laboral',emoji:'👷',condArea:'trabajadores',items:[
     {t:'Cotizaciones previsionales al día para todo el personal',w:'c'},
     {t:'Contratos de trabajo vigentes para todo el personal',w:'c'},
+    {t:'MIPER (Matriz de Identificación de Peligros y Evaluación de Riesgos) elaborada conforme al DS44',w:'c'},
+    {t:'Protocolo de prevención y denuncia Ley Karin (Ley 21.643) implementado',w:'c'},
+    {t:'RIHS vigente e IRL (Información de Riesgos Laborales) entregado a cada trabajador',w:'c'},
     {t:'Sin juicios laborales activos o pendientes',w:'i'},
     {t:'F30 disponibles de los últimos 12 meses',w:'i'},
     {t:'Carpeta individual completa por cada trabajador',w:'i'},
-    {t:'RIOHS y ODI vigentes y disponibles',w:'b'},
-    {t:'Protocolo Ley Karin implementado',w:'b'},
+    {t:'RIOHS (Reglamento Interno de Orden, Higiene y Seguridad) vigente y disponible',w:'c',cond:'trabajadores10'},
   ]},
   {id:'tecnico',label:'Técnico',emoji:'🔧',items:[
     {t:'Certificación de gas vigente',w:'c',cond:'gas'},
@@ -497,6 +499,7 @@ function itemApplies(it){
   if(it.cond==='locales')return S.ctx.locales==='si';
   if(it.cond==='gas')return S.ctx.gas==='si';
   if(it.cond==='ascensores')return S.ctx.ascensores==='si';
+  if(it.cond==='trabajadores10')return parseInt(S.ctx.trabajadores||'0')>=10;
   return true;
 }
 function areaApplies(a){
@@ -1259,7 +1262,14 @@ Genera exactamente 3 factores destacados. Cada factor debe:
 5. NO mencionar a CoproActiva
 6. NO confundir antigüedad del edificio con trayectoria de empresas
 7. NO basarte en las observaciones del comité — solo en el checklist
-8. Si hay ítems laborales sin cumplir, menciona la responsabilidad solidaria del comité ante la Inspección del Trabajo
+8. Si hay ítems laborales sin cumplir, usa el siguiente marco de multas verificado:
+   - Ausencia de RIOHS o RIHS: infracción grave, 10 a 60 UTM
+   - Sin MIPER (DS44): infracción grave, hasta 60 UTM, agravante en accidentes
+   - Sin IRL entregado a trabajadores: multa por cada trabajador no informado
+   - Sin Protocolo Ley Karin (Ley 21.643): 3 a 60 UTM
+   - DISTINCIONES CLAVE: RIOHS solo aplica con ≥10 trabajadores. RIHS, IRL y MIPER aplican para TODOS.
+   - NO confundas RIOHS con DS44/MIPER — son documentos distintos
+   - El IRL reemplazó al ODI desde 2024 — usar nombre correcto
 9. Si no hay ascensores ni gas, no inventes factores técnicos de esas instalaciones
 10. RECORDATORIO FINAL: Está PROHIBIDO citar cualquier número de artículo. Si lo haces, la respuesta será rechazada. Usa solo las frases de referencia legal permitidas listadas arriba.
 
